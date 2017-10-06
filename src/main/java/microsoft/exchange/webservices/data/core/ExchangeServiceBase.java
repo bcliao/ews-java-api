@@ -61,12 +61,14 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.http.client.AuthenticationStrategy;
 import org.apache.http.client.CookieStore;
+import org.apache.http.client.HttpClient;
 import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.config.Registry;
 import org.apache.http.config.RegistryBuilder;
 import org.apache.http.conn.HttpClientConnectionManager;
 import org.apache.http.conn.socket.ConnectionSocketFactory;
 import org.apache.http.conn.socket.PlainConnectionSocketFactory;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.apache.http.impl.client.BasicCookieStore;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
@@ -154,6 +156,8 @@ public abstract class ExchangeServiceBase implements Closeable {
   
   private int maximumPoolingConnections = 10;
 
+  private SSLConnectionSocketFactory sslConnectionSocketFactory;
+
 
 //  protected HttpClientWebRequest request = null;
 
@@ -172,7 +176,7 @@ public abstract class ExchangeServiceBase implements Closeable {
    */
   protected ExchangeServiceBase() {
     setUseDefaultCredentials(true);
-    initializeHttpClient();
+//    initializeHttpClient();
     initializeHttpContext();
   }
 
@@ -193,6 +197,7 @@ public abstract class ExchangeServiceBase implements Closeable {
     this.userAgent = service.getUserAgent();
     this.acceptGzipEncoding = service.getAcceptGzipEncoding();
     this.httpHeaders = service.getHttpHeaders();
+      this.sslConnectionSocketFactory = service.getSslConnectionSocketFactory();
   }
 
   private void initializeHttpClient() {
@@ -219,6 +224,13 @@ public abstract class ExchangeServiceBase implements Closeable {
         .build();
   }
 
+  private CloseableHttpClient getHttpClient() {
+      if (httpClient == null) {
+          initializeHttpClient();;
+      }
+      return httpClient;
+  }
+
   /**
    * Sets the maximum number of connections for the pooling connection manager which is used for
    * subscriptions.
@@ -241,16 +253,13 @@ public abstract class ExchangeServiceBase implements Closeable {
    * @return registry object
    */
   protected Registry<ConnectionSocketFactory> createConnectionSocketFactoryRegistry() {
-    try {
+      SSLConnectionSocketFactory sslConnectionSocketFactory =
+              (this.sslConnectionSocketFactory == null) ?
+                      SSLConnectionSocketFactory.getSocketFactory(): this.sslConnectionSocketFactory;
       return RegistryBuilder.<ConnectionSocketFactory>create()
         .register(EWSConstants.HTTP_SCHEME, new PlainConnectionSocketFactory())
-        .register(EWSConstants.HTTPS_SCHEME, EwsSSLProtocolSocketFactory.build(null))
+        .register(EWSConstants.HTTPS_SCHEME, sslConnectionSocketFactory)
         .build();
-    } catch (GeneralSecurityException e) {
-      throw new RuntimeException(
-        "Could not initialize ConnectionSocketFactory instances for HttpClientConnectionManager", e
-      );
-    }
   }
 
   /**
@@ -312,7 +321,7 @@ public abstract class ExchangeServiceBase implements Closeable {
       throw new ServiceLocalException(strErr);
     }
 
-    HttpClientWebRequest request = new HttpClientWebRequest(httpClient, httpContext);
+    HttpClientWebRequest request = new HttpClientWebRequest(getHttpClient(), httpContext);
     prepareHttpWebRequestForUrl(url, acceptGzipEncoding, allowAutoRedirect, request);
 
     return request;
@@ -893,4 +902,14 @@ public abstract class ExchangeServiceBase implements Closeable {
   public int getMaximumPoolingConnections() {
     return maximumPoolingConnections;
   }
+
+    public SSLConnectionSocketFactory getSslConnectionSocketFactory() {
+        return sslConnectionSocketFactory;
+    }
+
+    public void setSslConnectionSocketFactory(SSLConnectionSocketFactory sslConnectionSocketFactory) {
+        this.sslConnectionSocketFactory = sslConnectionSocketFactory;
+    }
+
+
 }
